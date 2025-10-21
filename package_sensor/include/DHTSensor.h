@@ -4,13 +4,13 @@
 #include <Arduino.h>
 #include <DHT.h>
 
-struct threshold //We will get these later from app
+struct threshold //Dessa ska vi få från appen sen
     {
         float minTemp = 20.0;
         float maxTemp = 28.0;   
     };
 
-    enum class Status //Status for temperature
+    enum class Status //Status för temperature
     {
         NORMAL,
         HIGH_TEMP,
@@ -21,21 +21,21 @@ struct threshold //We will get these later from app
 
 Status checkStatus(float temperature,const threshold& limits)
     {
-        if (isnan(temperature)) // Check if reading was successful
+        if (isnan(temperature)) // Kontrollera om avläsningen lyckades
         {
             return Status::ERROR;
         }
-        else if (temperature < limits.minTemp) // Check if below minTemp
+        else if (temperature < limits.minTemp) // Kontrollera om under minTemp
         {
             return Status::LOW_TEMP;
         }
-        else if (temperature > limits.maxTemp) // Check if above maxTemp
+        else if (temperature > limits.maxTemp) // Kontrollera om över maxTemp
         {
             return Status::HIGH_TEMP;
         }
         else
         {
-            return Status::NORMAL; // Check if we are inbetween min - max
+            return Status::NORMAL; // Kontrollera om vi är mellan min - max
         
         }
     }
@@ -43,7 +43,7 @@ Status checkStatus(float temperature,const threshold& limits)
 namespace DHTSensor
 {
 
-    uint8_t DHT_PIN = 5; //Change to appropriate pin
+    uint8_t DHT_PIN = 5; //Ändra till rätt pin
     const uint8_t DHT_TYPE = DHT11; //DHT11 sensor. change to DHT22 if needed
     DHT dht(DHT_PIN, DHT_TYPE);
     float temperature;
