@@ -189,12 +189,16 @@ void loop() {
     float t;
     int   h = 42; // fast humidity (enkel)
 
-    switch (i % 4) {
-      case 2: t = TEMP_HIGH + 2.0f; break;   // över 25
-      case 3: t = TEMP_LOW  - 2.0f; break;   // under 10
-      default:
-        t = TEMP_LOW + ((float)(millis() % 1000) / 1000.0f) * (TEMP_HIGH - TEMP_LOW); // normal 10–25
-        break;
+    // Endast två paket ska skickas med extrema värden:
+    // - i == 0 : över 25 (TEMP_HIGH + 2)
+    // - i == 1 : under 10  (TEMP_LOW  - 2)
+    // Övriga paket skickas med värden inom normalbandet (10–25).
+    if (i == 0) {
+      t = TEMP_HIGH + 2.0f; // över 25
+    } else if (i == 1) {
+      t = TEMP_LOW - 2.0f;  // under 10
+    } else {
+      t = TEMP_LOW + ((float)(millis() % 1000) / 1000.0f) * (TEMP_HIGH - TEMP_LOW); // normal 10–25
     }
 
     String body = String("{")
