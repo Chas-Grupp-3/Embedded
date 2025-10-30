@@ -31,7 +31,7 @@ void connectWiFi() {
   Serial.print("\nUNO IP: "); Serial.println(WiFi.localIP());
 }
 
-//  HTTP POST /ingest
+//  HTTP POST JSON med temperatur, fukt,
 static void postJson(float temperature, float humidity, const char* st) {
   unsigned long ts = millis()/1000;  // enkel tidsstämpel (sekunder sen boot)
 

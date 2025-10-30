@@ -44,7 +44,7 @@ namespace DHTSensor
 {
 
     uint8_t DHT_PIN = 5; //Ändra till rätt pin
-    const uint8_t DHT_TYPE = DHT11; //DHT11 sensor. change to DHT22 if needed
+    const uint8_t DHT_TYPE = DHT11; //Ändra vid byte om sensor
     DHT dht(DHT_PIN, DHT_TYPE);
     float temperature;
     float humidity;
@@ -56,18 +56,18 @@ namespace DHTSensor
     
     
 
-    void initDHTSensor() //Start the sensor
+    void initDHTSensor() //Starta sensorn
     {
         dht.begin();
     }
 
-    void readDHTSensor() //Save the readings to variables
+    void readDHTSensor() //Spara värdena i variabler
     {
         humidity = dht.readHumidity();
         temperature = dht.readTemperature();
     }
 
-    void printDHTSensor() //print if needed, we are checking temp in src
+    void printDHTSensor() //Test för att se värdena
     {
         Serial.print("Temperature: ");
         Serial.print(temperature, 1);

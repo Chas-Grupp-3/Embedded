@@ -7,3 +7,5 @@ include/secrets*.h
 src/esp32/secrets*.h
 src/uno/secrets*.h
 **/secrets*.h
+.env
+.env.*
