@@ -14,12 +14,11 @@
 
 #define SEND_PERIOD_MS 30000       // skicka var 30s ändra senare till exakt period (ms)
 
-const float TEMP_LOW = 10.0f;    // lägsta temperatur för simulering (används för mockvärden)
-const float TEMP_HIGH = 25.0f;   // högsta temperatur för simulering (används för mockvärden)
+const float TEMP_LOW = 15.0f;    // lägsta temperatur för simulering (används för mockvärden)
+const float TEMP_HIGH = 33.0f;   // högsta temperatur för simulering (används för mockvärden)
 
 
 std::vector<String> packageIds;   // sparade packageIds från backend
-// packageIds fylls av fetchPackages() och används för att skicka data till respektive paket
 
 
 //HTTPS/HTTP
@@ -29,7 +28,7 @@ std::vector<String> packageIds;   // sparade packageIds från backend
 static bool httpBegin(HTTPClient& http, const char* url) {       
   if (String(url).startsWith("https://")) {
     static WiFiClientSecure client;
-    client.setInsecure();              //BARA FÖR TEST, BYTTA UT MOT RIKTIG CERT-HANTERING SEN
+    client.setInsecure();              //BARA FÖR TEST/MOCKNING! Byt till riktig cert-hantering i produktion.
     return http.begin(client, url);
   }
   return http.begin(url);              // HTTP 
@@ -40,36 +39,34 @@ static bool httpBegin(HTTPClient& http, const char* url) {
 
 // Skapar ISO-8601-liknande tidsstämpel med millisekunder och lokal tidszons-offset.
 // Exempel output: "2025-10-20T14:03:12.123+02:00"
-// Funktionen använder lokal tid (localtime_r) vilket styrs av configTzTime() i setup().
 static String nowIsoStockholmMsSimple() {
   struct timeval tv; gettimeofday(&tv, nullptr);
   time_t sec = tv.tv_sec;
   struct tm lt; localtime_r(&sec, &lt); // lokal tid
 
-  char dateTime[32];  // t.ex. 2025-10-20T14:03:12
+  char dateTime[32];  // datum och tid
   strftime(dateTime, sizeof(dateTime), "%Y-%m-%dT%H:%M:%S", &lt);
 
-  char offRaw[8];     // t.ex. +0200 eller +0100 (utan kolon)
+  char offRaw[8];     // tidzons-offset (t.ex +0200)
   strftime(offRaw, sizeof(offRaw), "%z", &lt);
 
-  // +0200 -> +02:00
-  char tz[7] = "+00:00"; // formatterad offset med kolon
+  //konvertera +0200 -> +02:00
+  char tz[7] = "+00:00"; 
   if (strlen(offRaw) == 5) {
     snprintf(tz, sizeof(tz), "%c%c%c:%c%c", offRaw[0], offRaw[1], offRaw[2], offRaw[3], offRaw[4]);
   }
 
-  char out[64]; //Fullt: 2025-10-20T14:03:12.123+02:00
+  char out[64]; //fullt format: 2025-10-20T14:03:12.123+02:00
   snprintf(out, sizeof(out), "%s.%03ld%s", dateTime, tv.tv_usec/1000, tz);
   return String(out);
 }
 
 
 bool fetchPackages() {
-  // Ta basen av CLOUD_URL (utan /1 i slutet)
   String url = String(CLOUD_URL);
-
-
-  // Hämta lista på paket från backend. Förväntas returnera JSON-array med objekt som innehåller fältet "id".
+  
+  Serial.printf("[DEBUG] Fetching from: %s\n", url.c_str()); 
+  
   HTTPClient http;
   http.setTimeout(10000);
   if (!httpBegin(http, url.c_str())) {
@@ -78,6 +75,8 @@ bool fetchPackages() {
   }
 
   int code = http.GET();
+  Serial.printf("[DEBUG] GET response code: %d\n", code); 
+  
   if (code != 200) {
     Serial.printf("[GET] Failed, code=%d\n", code);
     http.end();
@@ -87,6 +86,7 @@ bool fetchPackages() {
   String payload = http.getString();
   http.end();
   Serial.printf("[GET] OK, len=%d\n", payload.length());
+  Serial.printf("[DEBUG] Response: %s\n", payload.c_str()); 
 
   DynamicJsonDocument doc(8192);
   auto err = deserializeJson(doc, payload);
@@ -95,15 +95,15 @@ bool fetchPackages() {
     return false;
   }
 
-  // Uppdatera lokal lista med paket-ID:n som backend returnerar
+  // Uppdatera lokal lista med paket-ID:n från backend
   packageIds.clear();
-  if (doc.is<JsonArray>()) {
-    for (JsonVariant v : doc.as<JsonArray>()) {
-      if (v.is<JsonObject>() && v["id"].is<const char*>()) {
-        packageIds.push_back(String(v["id"].as<const char*>()));
-      }
+if (doc.is<JsonArray>()) {
+  for (JsonVariant v : doc.as<JsonArray>()) {
+    if (v.is<JsonObject>() && v["package_id"].is<const char*>()) {  // ÄNDRA "id" → "package_id"
+      packageIds.push_back(String(v["package_id"].as<const char*>()));  // ÄNDRA här också
     }
   }
+}
 
   Serial.printf("[GET] %d paket hittade\n", (int)packageIds.size());
   for (auto &id : packageIds) Serial.printf("  - %s\n", id.c_str());
@@ -117,7 +117,7 @@ void setup() {
   delay(500);
   Serial.println("\nESP32 Boot OK (minimal PUT-sändare)"); // Status vid start
 
-  // WiFi
+  //anslut till WiFi
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("WiFi");
@@ -126,26 +126,29 @@ void setup() {
   Serial.printf("CLOUD_URL: %s\n", CLOUD_URL); // Visa rätt URL
 
   
-  // Synkronisera tid via NTP. Använder CET (UTC+1) utan sommartid (DST).
-  // Byt till DST-regeln "CET-1CEST,M3.5.0/02,M10.5.0/03" om automatisk sommartid önskas.
+  // Synkronisera tid via NTP. (CET utan sommartid)
   configTzTime("CET-1","pool.ntp.org","time.nist.gov");
   // kort vänt för tid (max ~5s)
   for (int i=0; i<20 && time(nullptr) < 1700000000; ++i) { delay(250); }
   
-  // Paket-ID:n hämtas från backend. Om det misslyckas används fallback (/1).
+  // hämta paket-ID:n hämtas från backend
   if (!fetchPackages()) {
     Serial.println("[ERR] Kunde inte hämta paket-ID (kommer skicka till /1 som fallback)");
   }
+
+  randomSeed(millis()); // initialisera slumptal
 }
 
 void loop() {
   static uint32_t lastSend = 0; // Tidpunkt för senaste sändning
+  
+  // vänta tills det är dags att skicka nästa paket
   if (millis() - lastSend < SEND_PERIOD_MS) {
     // enkel WiFi-reconnect utan att blockera
     static uint32_t lastCheck = 0;
     if (millis() - lastCheck > 5000) { // kolla var 5:e sekund
       lastCheck = millis();
-      if (WiFi.status() != WL_CONNECTED) { // inte ansluten, försök igen
+      if (WiFi.status() != WL_CONNECTED) { 
         WiFi.disconnect();
         WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
       }
@@ -154,11 +157,12 @@ void loop() {
   }
   lastSend = millis(); // uppdatera tidpunkt
 
-  String iso = nowIsoStockholmMsSimple();
+  String iso = nowIsoStockholmMsSimple(); // tidsstämpel för denna sändningen
 
+  //fallback: om inga paket-ID:n finns, skicka till /1
   if (packageIds.empty()) {
     float t = TEMP_LOW + ((float)(millis() % 1000) / 1000.0f) * (TEMP_HIGH - TEMP_LOW); // normal temp
-    int   h = 42; // fast humidity
+    int h = 35 + random(0, 31); //slumpmässig humidity 35-65%
 
     String body = String("{")
       + "\"temperature\":" + String(t, 2) + ","
@@ -184,22 +188,27 @@ void loop() {
     return;
   }
 
-  // Annars: skicka till ALLA paket-ID med mönstret 0,1 normal – 2 hög – 3 låg (loopar)
+  // Skicka till alla paket-ID med olika temperaturmönster
   for (size_t i = 0; i < packageIds.size(); ++i) {
     float t;
-    int   h = 42; // fast humidity (enkel)
+    int h;
 
-    // Endast två paket ska skickas med extrema värden:
-    // - i == 0 : över 25 (TEMP_HIGH + 2)
-    // - i == 1 : under 10  (TEMP_LOW  - 2)
-    // Övriga paket skickas med värden inom normalbandet (10–25).
+    
+    // Olika temperaturmönster per paket.
     if (i == 0) {
-      t = TEMP_HIGH + 2.0f; // över 25
+      t = TEMP_HIGH + 2.0f; // över 25 
     } else if (i == 1) {
       t = TEMP_LOW - 2.0f;  // under 10
-    } else {
-      t = TEMP_LOW + ((float)(millis() % 1000) / 1000.0f) * (TEMP_HIGH - TEMP_LOW); // normal 10–25
-    }
+    } else if (i == 2) {
+    h = 24 + random(0, 6); // över 23 (24-29%)
+    t = TEMP_LOW + ((float)(millis() % 1000) / 1000.0f) * (TEMP_HIGH - TEMP_LOW); // normal 10-25
+  } else if (i == 3) {
+    h = 15 + random(0, 6); // under 21 (15-20%)
+    t = TEMP_LOW + ((float)(millis() % 1000) / 1000.0f) * (TEMP_HIGH - TEMP_LOW); // normal 10-25
+  } else {
+    h = 22;               // normal humidity 22%
+    t = TEMP_LOW + ((float)(millis() % 1000) / 1000.0f) * (TEMP_HIGH - TEMP_LOW); // normal 10-25
+  }
 
     String body = String("{")
       + "\"temperature\":" + String(t, 2) + ","
@@ -207,11 +216,11 @@ void loop() {
       + "\"date\":\""      + iso          + "\""
       + "}";
 
-    // Bygg URL för paket: ta bort ev. trailing '/' och lägg till paket-id
+    // Bygg URL för specifikt paket
     String url = String(CLOUD_URL);
-    if (url.endsWith("/")) url.remove(url.length()-1);
+    if (url.endsWith("/")) url.remove(url.length()-1); // ta bort ev. trailing slash
     url += "/";
-    url += packageIds[i]; // -> .../packages/<id>
+    url += packageIds[i]; // lägg till paket-ID
 
     HTTPClient http;
     http.setTimeout(8000);
@@ -219,7 +228,7 @@ void loop() {
 
     if (!httpBegin(http, url.c_str())) {
       Serial.println("[ERR] http.begin failed");
-      continue; // vi är i en for-loop → giltigt
+      continue; //fortsätt till nästa paket
     }
 
     http.addHeader("Content-Type", "application/json");
