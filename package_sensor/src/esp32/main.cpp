@@ -197,8 +197,10 @@ void loop() {
     // Olika temperaturmönster per paket.
     if (i == 0) {
       t = TEMP_HIGH + 2.0f; // över 25 
+      h = 22;               // normal humidity 22%
     } else if (i == 1) {
       t = TEMP_LOW - 2.0f;  // under 10
+      h = 22;               // normal humidity 22%
     } else if (i == 2) {
     h = 24 + random(0, 6); // över 23 (24-29%)
     t = TEMP_LOW + ((float)(millis() % 1000) / 1000.0f) * (TEMP_HIGH - TEMP_LOW); // normal 10-25
